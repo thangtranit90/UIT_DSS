@@ -33,7 +33,8 @@ export default function App() {
 
   const ahpRes = useMemo(() => {
     const map: Record<string, number> = {};
-    pairs.forEach(([i, j]) => (map[`${i}-${j}`] = saaty(pairVal[`${i}-${j}`] ?? 0)));
+    // slider k>0 = criterion j (right) more important -> a_ij (left over right) < 1
+    pairs.forEach(([i, j]) => (map[`${i}-${j}`] = saaty(-(pairVal[`${i}-${j}`] ?? 0))));
     return ahp(matrixFromPairs(n, map));
   }, [pairs, pairVal, n]);
 
@@ -236,11 +237,11 @@ function Weights({ crit, pairs, pairIdx, setPairIdx, pairVal, setPairVal, ahpRes
       </div>
       <div className="rounded-2xl border border-border bg-surface p-6 grid gap-6">
         <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
-          <div className={cx("rounded-xl border-2 p-4 text-center", k > 0 ? "border-accent bg-accentSoft" : "border-border bg-bg")}>
+          <div className={cx("rounded-xl border-2 p-4 text-center", k < 0 ? "border-accent bg-accentSoft" : "border-border bg-bg")}>
             <div className="font-head font-bold">{a.label}</div><div className="text-xs text-faint">{a.hint}</div>
           </div>
           <span className="grid h-9 w-9 place-items-center rounded-full border border-border bg-bg text-xs font-bold text-faint">vs</span>
-          <div className={cx("rounded-xl border-2 p-4 text-center", k < 0 ? "border-accent bg-accentSoft" : "border-border bg-bg")}>
+          <div className={cx("rounded-xl border-2 p-4 text-center", k > 0 ? "border-accent bg-accentSoft" : "border-border bg-bg")}>
             <div className="font-head font-bold">{b.label}</div><div className="text-xs text-faint">{b.hint}</div>
           </div>
         </div>
@@ -252,7 +253,7 @@ function Weights({ crit, pairs, pairIdx, setPairIdx, pairVal, setPairVal, ahpRes
         </div>
         <div className="rounded-lg bg-accentSoft px-4 py-2.5 text-center text-sm font-semibold text-accentDark">
           {k === 0 ? "Hai tiêu chí ngang nhau"
-            : `${(k > 0 ? a : b).label} ${saatyLabel(saaty(Math.abs(k)))}`}
+            : `${(k < 0 ? a : b).label} ${saatyLabel(saaty(Math.abs(k)))}`}
         </div>
         <div className="flex gap-3">
           <button disabled={pairIdx === 0} onClick={() => setPairIdx((x: number) => x - 1)}
