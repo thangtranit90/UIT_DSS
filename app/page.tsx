@@ -49,6 +49,28 @@ export default function App() {
     return topsis<Product>(items, (p) => p.criteria, weights, costKeys(category));
   }, [category, budget, weights]);
 
+  // Demo hook: lets you inspect "CSV thô → tiêu chí số" from the browser console.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    (window as any).DSS = {
+      laptop: getProducts("laptop"),
+      phone: getProducts("phone"),
+      CRITERIA, ahp, matrixFromPairs, topsis,
+      explain(cat: Category = "laptop", i = 0) {
+        const p = getProducts(cat)[i];
+        console.log("%c" + p.product + "  ·  $" + Math.round(p.price),
+          "font-weight:bold;color:#4F46E5;font-size:13px");
+        console.log("① DỮ LIỆU GỐC đọc từ file CSV (raw):");
+        console.table(p.raw);
+        console.log("② ĐIỂM TIÊU CHÍ hệ thống TÍNH RA (đầu vào cho AHP · TOPSIS):");
+        console.table(p.criteria);
+        return "→ So sánh 2 bảng: chuỗi/thông số thô ⟶ điểm số dùng để xếp hạng.";
+      },
+    };
+    console.log("%c[DSS] Gõ  DSS.explain()  để xem CSV → tiêu chí. (DSS.laptop / DSS.phone = dữ liệu đã tính)",
+      "color:#4F46E5;font-weight:bold");
+  }, []);
+
   const switchCat = (c: Category) => {
     setCategory(c);
     setBudget(priceStats(c).p75);
