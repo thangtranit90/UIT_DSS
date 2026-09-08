@@ -1,7 +1,33 @@
 "use client";
-import React from "react";
+import React, { useState } from "react";
 
 export const cx = (...a: (string | false | undefined)[]) => a.filter(Boolean).join(" ");
+
+// Small info button that toggles a popover with a formula/explanation.
+export function Info({ label, children }: { label?: string; children: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <span className="relative inline-flex">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-accent hover:bg-accentSoft"
+        aria-label="Xem công thức"
+      >
+        <Icon name="info" size={15} />
+        {label && <span className="text-xs font-semibold">{label}</span>}
+      </button>
+      {open && (
+        <>
+          <span className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
+          <span className="absolute right-0 top-7 z-40 w-72 rounded-xl border border-border bg-bg p-3.5 text-left shadow-xl">
+            <span className="block text-[13px] leading-relaxed text-ink [&_b]:text-accent">{children}</span>
+          </span>
+        </>
+      )}
+    </span>
+  );
+}
 
 export function Bar({ value, tone = "accent" }: { value: number; tone?: "accent" | "success" }) {
   const c = tone === "success" ? "bg-success" : "bg-accent";

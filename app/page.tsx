@@ -1,10 +1,10 @@
 "use client";
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { CRITERIA, costKeys, type Category } from "@/lib/criteria";
 import { getProducts, priceStats, money, type Product } from "@/lib/data";
 import { ahp, matrixFromPairs } from "@/lib/ahp";
 import { topsis, type Ranked } from "@/lib/topsis";
-import { Bar, Ring, Icon, Badge, cx } from "@/components/ui";
+import { Bar, Ring, Icon, Badge, Info, cx } from "@/components/ui";
 
 type Step = "home" | "budget" | "weights" | "results";
 
@@ -78,6 +78,7 @@ export default function App() {
         {step === "results" && (
           <Results category={category} ranked={ranked} weights={weights} crit={crit}
             compareIds={compareIds} toggleCompare={toggleCompare}
+            budget={budget} setBudget={setBudget} stats={stats}
             onDetail={setDetail} onCompare={() => setShowCompare(true)}
             onBack={() => setStep("weights")} />
         )}
@@ -268,7 +269,15 @@ function Weights({ crit, pairs, pairIdx, setPairIdx, pairVal, setPairVal, ahpRes
       </div>
       <div className="rounded-2xl border border-border bg-bg p-5 grid gap-3">
         <div className="flex items-center justify-between">
-          <span className="font-head font-bold text-sm">Trọng số AHP tạm tính</span>
+          <span className="flex items-center gap-1 font-head font-bold text-sm">
+            Trọng số AHP tạm tính
+            <Info label="Công thức">
+              <b>AHP</b> — trọng số từ ma trận so sánh cặp A (thang Saaty):<br />
+              wᵢ = (∏ⱼ aᵢⱼ)^(1/n), chuẩn hoá Σw = 1<br />
+              Nhất quán: <b>CR = CI / RI</b>, CI = (λmax − n)/(n − 1)<br />
+              CR ≤ 0.1 ⇒ bộ so sánh chấp nhận được.
+            </Info>
+          </span>
           <Badge tone={ahpRes.consistent ? "success" : "muted"}>
             <Icon name={ahpRes.consistent ? "check" : "info"} size={14} />
             CR {ahpRes.cr.toFixed(2)} · {ahpRes.consistent ? "Nhất quán" : "Chưa nhất quán"}
@@ -284,30 +293,60 @@ function Weights({ crit, pairs, pairIdx, setPairIdx, pairVal, setPairVal, ahpRes
         {!ahpRes.consistent && (
           <p className="text-xs text-danger">CR &gt; 0.10 — các so sánh mâu thuẫn nhau, nên điều chỉnh lại vài cặp.</p>
         )}
+        <p className="flex items-start gap-1.5 text-xs text-muted">
+          <Icon name="arrow" size={13} className="mt-0.5 shrink-0" />
+          Bấm "Phân tích &amp; xếp hạng" để áp bộ trọng số này vào <b className="text-accent">TOPSIS</b> và xếp hạng sản phẩm.
+        </p>
       </div>
       <NextBtn onClick={onNext} label="Phân tích & xếp hạng" />
     </div>
   );
 }
 
-function Results({ category, ranked, weights, crit, compareIds, toggleCompare, onDetail, onCompare, onBack }: any) {
-  const top = ranked.slice(0, 24);
+function Results({ category, ranked, weights, crit, compareIds, toggleCompare, budget, setBudget, stats, onDetail, onCompare, onBack }: any) {
+  const PAGE = 9;
+  const [page, setPage] = useState(0);
+  useEffect(() => setPage(0), [ranked.length, category]);
   const topCrit = [...crit].sort((a: any, b: any) => weights[b.key] - weights[a.key]).slice(0, 3);
   const bnd = boundsOf(ranked, crit.map((c: any) => c.key));
+
   if (ranked.length === 0)
     return (
-      <div className="max-w-xl mx-auto text-center py-20 grid gap-4">
-        <h2 className="font-head text-2xl font-extrabold">Không có sản phẩm trong tầm giá</h2>
-        <p className="text-muted">Hãy tăng ngân sách tối đa rồi thử lại.</p>
-        <button onClick={onBack} className="mx-auto rounded-xl bg-accent px-6 py-3 font-head font-bold text-white">Quay lại</button>
+      <div className="max-w-xl mx-auto grid gap-5 py-10 text-center">
+        <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-accentSoft text-accent"><Icon name="wallet" size={26} /></div>
+        <h2 className="font-head text-2xl font-extrabold">Chưa có sản phẩm trong tầm giá</h2>
+        <p className="text-muted">Kéo tăng ngân sách để thấy kết quả ngay — không cần quay lại.</p>
+        <div className="rounded-2xl border border-border bg-bg p-6 grid gap-4 text-left">
+          <div className="flex items-end justify-between">
+            <span className="text-sm font-semibold text-muted">NGÂN SÁCH TỐI ĐA</span>
+            <span className="font-head text-2xl font-extrabold text-accent">{money(budget)}</span>
+          </div>
+          <input type="range" min={Math.floor(stats.min)} max={Math.ceil(stats.max)} value={budget} onChange={(e) => setBudget(+e.target.value)} className="w-full" />
+          <div className="flex justify-between text-xs text-faint"><span>{money(stats.min)}</span><span>{money(stats.max)}</span></div>
+        </div>
+        <button onClick={onBack} className="text-sm text-muted underline">Hoặc chỉnh lại tiêu chí</button>
       </div>
     );
+
+  const rest = ranked.slice(1);
+  const pageCount = Math.max(1, Math.ceil(rest.length / PAGE));
+  const cur = Math.min(page, pageCount - 1);
+  const pageItems = rest.slice(cur * PAGE, cur * PAGE + PAGE);
+
   return (
     <div className="grid gap-5">
-      <div className="flex items-center justify-between flex-wrap gap-3">
+      <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
-          <h2 className="font-head text-2xl font-extrabold">Đề xuất cho bạn</h2>
-          <p className="text-muted text-sm">{ranked.length} sản phẩm trong tầm giá · xếp hạng bằng AHP + TOPSIS</p>
+          <h2 className="font-head text-2xl font-extrabold flex items-center gap-1.5">
+            Đề xuất cho bạn
+            <Info label="Cách tính">
+              <b>TOPSIS</b> — xếp hạng theo độ gần phương án lý tưởng:<br />
+              rₖ = xₖ/√Σx² · vₖ = wₖ·rₖ · A⁺/A⁻ = lý tưởng tốt/xấu<br />
+              <b>Điểm = C* = D⁻ / (D⁺ + D⁻) × 100</b><br />
+              Trọng số wₖ lấy từ <b>AHP</b> ở bước trước.
+            </Info>
+          </h2>
+          <p className="text-muted text-sm">{ranked.length} sản phẩm trong tầm giá · điểm % là <b>TOPSIS closeness</b> với trọng số AHP</p>
         </div>
         <div className="flex gap-2">
           <button onClick={onBack} className="rounded-xl border border-border bg-bg px-4 py-2.5 text-sm font-semibold">Chỉnh tiêu chí</button>
@@ -318,14 +357,21 @@ function Results({ category, ranked, weights, crit, compareIds, toggleCompare, o
           )}
         </div>
       </div>
-      {top[0] && <HeroCard r={top[0]} topCrit={topCrit} category={category} bnd={bnd}
-        selected={compareIds.includes(top[0].item.id)} onDetail={onDetail} onCompare={toggleCompare} />}
+      {cur === 0 && <HeroCard r={ranked[0]} topCrit={topCrit} category={category} bnd={bnd}
+        selected={compareIds.includes(ranked[0].item.id)} onDetail={onDetail} onCompare={toggleCompare} />}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {top.slice(1).map((r: Ranked<Product>) => (
+        {pageItems.map((r: Ranked<Product>) => (
           <RankCard key={r.item.id} r={r} topCrit={topCrit} bnd={bnd}
             selected={compareIds.includes(r.item.id)} onDetail={onDetail} onCompare={toggleCompare} />
         ))}
       </div>
+      {pageCount > 1 && (
+        <div className="flex items-center justify-center gap-3 pt-2">
+          <button disabled={cur === 0} onClick={() => setPage(cur - 1)} className="rounded-lg border border-border bg-bg px-4 py-2 text-sm font-semibold disabled:opacity-40">‹ Trước</button>
+          <span className="text-sm text-muted">Trang {cur + 1} / {pageCount}</span>
+          <button disabled={cur >= pageCount - 1} onClick={() => setPage(cur + 1)} className="rounded-lg border border-border bg-bg px-4 py-2 text-sm font-semibold disabled:opacity-40">Sau ›</button>
+        </div>
+      )}
     </div>
   );
 }
