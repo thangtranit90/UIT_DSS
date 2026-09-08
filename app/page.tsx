@@ -6,7 +6,7 @@ import { ahp, matrixFromPairs } from "@/lib/ahp";
 import { topsis, type Ranked } from "@/lib/topsis";
 import { Bar, Ring, Icon, Badge, Info, cx } from "@/components/ui";
 
-type Step = "home" | "budget" | "weights" | "results";
+type Step = "home" | "workbench" | "budget" | "weights" | "results";
 
 const saaty = (k: number) => (k > 0 ? 2 * k + 1 : k < 0 ? 1 / (2 * -k + 1) : 1);
 const saatyLabel = (a: number) =>
@@ -49,13 +49,16 @@ export default function App() {
     return topsis<Product>(items, (p) => p.criteria, weights, costKeys(category));
   }, [category, budget, weights]);
 
-  const start = (c: Category) => {
+  const switchCat = (c: Category) => {
     setCategory(c);
     setBudget(priceStats(c).p75);
     setPairVal({});
     setPairIdx(0);
     setCompareIds([]);
-    setStep("budget");
+  };
+  const start = (c: Category) => {
+    switchCat(c);
+    setStep("workbench");
   };
 
   const toggleCompare = (id: string) =>
@@ -66,6 +69,14 @@ export default function App() {
       <Nav category={category} step={step} onHome={() => setStep("home")} />
       <main className="mx-auto max-w-6xl px-5 py-6 sm:py-10">
         {step === "home" && <Home stats={priceStats} onStart={start} />}
+        {step === "workbench" && (
+          <Workbench category={category} onSwitchCategory={switchCat}
+            budget={budget} setBudget={setBudget} stats={stats}
+            crit={crit} pairs={pairs} pairIdx={pairIdx} setPairIdx={setPairIdx}
+            pairVal={pairVal} setPairVal={setPairVal} ahpRes={ahpRes} weights={weights}
+            ranked={ranked} compareIds={compareIds} toggleCompare={toggleCompare}
+            onDetail={setDetail} onCompare={() => setShowCompare(true)} />
+        )}
         {step === "budget" && (
           <Budget category={category} stats={stats} budget={budget} setBudget={setBudget}
             onBack={() => setStep("home")} onNext={() => setStep("weights")} />
@@ -91,6 +102,142 @@ export default function App() {
         <Compare ranked={ranked.filter((r) => compareIds.includes(r.item.id))} category={category}
           onClose={() => setShowCompare(false)} />
       )}
+    </div>
+  );
+}
+
+function Workbench({ category, onSwitchCategory, budget, setBudget, stats, crit, pairs, pairIdx, setPairIdx,
+  pairVal, setPairVal, ahpRes, weights, ranked, compareIds, toggleCompare, onDetail, onCompare }: any) {
+  const PAGE = 9;
+  const [page, setPage] = useState(0);
+  useEffect(() => setPage(0), [ranked.length, category]);
+  const [i, j] = pairs[pairIdx];
+  const key = `${i}-${j}`;
+  const k = pairVal[key] ?? 0;
+  const a = crit[i], b = crit[j];
+  const set = (v: number) => setPairVal((s: any) => ({ ...s, [key]: v }));
+  const order = crit.map((c: any) => ({ ...c, w: weights[c.key] })).sort((x: any, y: any) => y.w - x.w);
+  const topCrit = order.slice(0, 3);
+  const bnd = boundsOf(ranked, crit.map((c: any) => c.key));
+  const rest = ranked.slice(1);
+  const pageCount = Math.max(1, Math.ceil(rest.length / PAGE));
+  const cur = Math.min(page, pageCount - 1);
+  const pageItems = rest.slice(cur * PAGE, cur * PAGE + PAGE);
+
+  return (
+    <div className="grid gap-6 lg:grid-cols-[360px_1fr] lg:items-start">
+      {/* CONTROL PANEL */}
+      <aside className="grid gap-4 lg:sticky lg:top-20">
+        <div className="grid grid-cols-2 gap-1 rounded-xl bg-surface p-1">
+          {(["laptop", "phone"] as Category[]).map((c) => (
+            <button key={c} onClick={() => onSwitchCategory(c)}
+              className={cx("flex items-center justify-center gap-2 rounded-lg py-2.5 text-sm font-bold transition",
+                category === c ? "bg-bg shadow-sm text-ink border border-border" : "text-muted")}>
+              <Icon name={c === "laptop" ? "laptop" : "smartphone"} size={16} />
+              {c === "laptop" ? "Laptop" : "Điện thoại"}
+            </button>
+          ))}
+        </div>
+
+        <div className="rounded-2xl border border-border bg-bg p-5 grid gap-3">
+          <div className="flex items-end justify-between">
+            <span className="text-sm font-semibold text-muted">NGÂN SÁCH TỐI ĐA</span>
+            <span className="font-head text-2xl font-extrabold text-accent">{money(budget)}</span>
+          </div>
+          <input type="range" min={Math.floor(stats.min)} max={Math.ceil(stats.max)} value={budget}
+            onChange={(e) => setBudget(+e.target.value)} className="w-full" />
+          <div className="flex justify-between text-xs text-faint"><span>{money(stats.min)}</span><span>{money(stats.max)}</span></div>
+        </div>
+
+        <div className="rounded-2xl border border-border bg-bg p-5 grid gap-4">
+          <div className="flex items-center justify-between">
+            <span className="flex items-center gap-1 font-head font-bold text-sm">
+              So sánh cặp (AHP)
+              <Info label="Công thức">
+                <b>AHP</b>: wᵢ = (∏ⱼ aᵢⱼ)^(1/n), Σw = 1<br />
+                <b>CR = CI/RI</b>, CI = (λmax − n)/(n − 1); CR ≤ 0.1 ⇒ nhất quán.
+              </Info>
+            </span>
+            <span className="text-xs text-faint">Cặp {pairIdx + 1}/{pairs.length}</span>
+          </div>
+          <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+            <div className={cx("rounded-lg border-2 p-2.5 text-center text-sm font-bold", k < 0 ? "border-accent bg-accentSoft" : "border-border")}>{a.label}</div>
+            <span className="text-[10px] font-bold text-faint">vs</span>
+            <div className={cx("rounded-lg border-2 p-2.5 text-center text-sm font-bold", k > 0 ? "border-accent bg-accentSoft" : "border-border")}>{b.label}</div>
+          </div>
+          <input type="range" min={-4} max={4} step={1} value={k} onChange={(e) => set(+e.target.value)} className="w-full" />
+          <div className="text-center text-xs font-semibold text-accentDark">
+            {k === 0 ? "Ngang nhau" : `${(k < 0 ? a : b).label} ${saatyLabel(saaty(Math.abs(k)))}`}
+          </div>
+          <div className="flex gap-2">
+            <button disabled={pairIdx === 0} onClick={() => setPairIdx((x: number) => x - 1)}
+              className="flex-1 rounded-lg border-[1.5px] border-border py-2 text-sm font-bold disabled:opacity-40">‹ Trước</button>
+            <button disabled={pairIdx >= pairs.length - 1} onClick={() => setPairIdx((x: number) => x + 1)}
+              className="flex-1 rounded-lg bg-accent py-2 text-sm font-bold text-white disabled:opacity-40">Sau ›</button>
+          </div>
+          <div className="border-t border-border pt-3 grid gap-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-muted">TRỌNG SỐ (AHP)</span>
+              <Badge tone={ahpRes.consistent ? "success" : "muted"}>
+                <Icon name={ahpRes.consistent ? "check" : "info"} size={12} /> CR {ahpRes.cr.toFixed(2)}
+              </Badge>
+            </div>
+            {order.map((c: any) => (
+              <div key={c.key} className="flex items-center gap-2">
+                <span className="w-24 text-xs text-muted">{c.label}</span>
+                <Bar value={c.w * 100} />
+                <span className="w-9 text-right font-head font-bold text-xs">{(c.w * 100).toFixed(0)}%</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </aside>
+
+      {/* LIVE RANKING */}
+      <section className="grid gap-4">
+        <div className="flex items-start justify-between flex-wrap gap-3">
+          <div>
+            <h2 className="font-head text-2xl font-extrabold flex items-center gap-1.5">
+              Xếp hạng
+              <Info label="TOPSIS">
+                <b>TOPSIS</b>: rₖ = xₖ/√Σx² · vₖ = wₖ·rₖ · A⁺/A⁻ lý tưởng tốt/xấu<br />
+                <b>Điểm = C* = D⁻/(D⁺+D⁻) × 100</b>, trọng số wₖ từ AHP.
+              </Info>
+            </h2>
+            <p className="text-muted text-sm">
+              {ranked.length} sản phẩm ≤ {money(budget)} · điểm % là <b>TOPSIS closeness</b> — cập nhật ngay khi bạn chỉnh
+            </p>
+          </div>
+          {compareIds.length >= 2 && (
+            <button onClick={onCompare} className="flex items-center gap-2 rounded-xl bg-accent px-4 py-2.5 text-sm font-bold text-white">
+              <Icon name="compare" size={16} /> So sánh ({compareIds.length})
+            </button>
+          )}
+        </div>
+        {ranked.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-border bg-bg p-10 text-center text-muted">
+            Chưa có sản phẩm ≤ {money(budget)}. Kéo tăng ngân sách bên trái để thấy kết quả.
+          </div>
+        ) : (
+          <>
+            {cur === 0 && <HeroCard r={ranked[0]} topCrit={topCrit} category={category} bnd={bnd}
+              selected={compareIds.includes(ranked[0].item.id)} onDetail={onDetail} onCompare={toggleCompare} />}
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              {pageItems.map((r: Ranked<Product>) => (
+                <RankCard key={r.item.id} r={r} topCrit={topCrit} bnd={bnd}
+                  selected={compareIds.includes(r.item.id)} onDetail={onDetail} onCompare={toggleCompare} />
+              ))}
+            </div>
+            {pageCount > 1 && (
+              <div className="flex items-center justify-center gap-3 pt-1">
+                <button disabled={cur === 0} onClick={() => setPage(cur - 1)} className="rounded-lg border border-border bg-bg px-4 py-2 text-sm font-semibold disabled:opacity-40">‹ Trước</button>
+                <span className="text-sm text-muted">Trang {cur + 1} / {pageCount}</span>
+                <button disabled={cur >= pageCount - 1} onClick={() => setPage(cur + 1)} className="rounded-lg border border-border bg-bg px-4 py-2 text-sm font-semibold disabled:opacity-40">Sau ›</button>
+              </div>
+            )}
+          </>
+        )}
+      </section>
     </div>
   );
 }
